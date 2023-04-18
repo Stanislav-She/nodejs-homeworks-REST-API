@@ -1,8 +1,14 @@
 const { Contact } = require('../models');
 const { HttpError } = require('../utils');
 
-const getAll = async (_, res) => {
-  const contacts = await Contact.find();
+const getAll = async (req, res) => {
+  const { _id } = req.user;
+  const { page = 1, limit = 20, favorite } = req.query;
+  const skip = (page - 1) * limit;
+  const contacts = await Contact.find(favorite ? { owner: _id, favorite } : { owner: _id }, '', {
+    skip,
+    limit: +limit,
+  }).populate('owner', 'email');
   res.status(200).json(contacts);
 };
 
@@ -17,15 +23,15 @@ const getById = async (req, res) => {
 };
 
 const add = async (req, res) => {
-  const contact = await Contact.create(req.body);
-  res.status(201).json(contact);
+  const { _id: owner } = req.user;
+  const newContact = await Contact.create({ ...req.body, owner });
+  res.status(201).json(newContact.name);
 };
 
 const removeById = async (req, res) => {
   const { contactId } = req.params;
-
-  const contact = await Contact.findByIdAndRemove(contactId);
-  if (!contact) {
+  const removeContact = await Contact.findByIdAndRemove(contactId);
+  if (!removeContact) {
     throw new HttpError(404, 'Not found');
   }
   res.status(200).json({ message: 'contact deleted' });
@@ -34,21 +40,21 @@ const removeById = async (req, res) => {
 const updateById = async (req, res) => {
   const { contactId } = req.params;
 
-  const contact = await Contact.findByIdAndUpdate(contactId, req.body, { new: true });
-  if (!contact) {
+  const updateContact = await Contact.findByIdAndUpdate(contactId, req.body, { new: true });
+  if (!updateContact) {
     throw new HttpError(404, 'Not found');
   }
-  res.status(200).json(contact);
+  res.status(200).json(updateContact);
 };
 
 const updateStatusContact = async (req, res) => {
   const { contactId } = req.params;
   const { favorite } = req.body;
-  const contact = await Contact.findByIdAndUpdate(contactId, { favorite }, { new: true });
-  if (!contact) {
+  const updateContact = await Contact.findByIdAndUpdate(contactId, { favorite }, { new: true });
+  if (!updateContact) {
     throw new HttpError(404, 'Not found');
   }
-  res.status(200).json(contact);
+  res.status(200).json(updateContact);
 };
 
 module.exports = { getAll, getById, add, updateById, removeById, updateStatusContact };

@@ -11,10 +11,11 @@ const {
 
 const { contactJoiSchema, favoriteJoiSchema } = require('../../schemas');
 
-const { validation, ctrlWrapper } = require('../../middelwares');
+const { validation, ctrlWrapper, auth } = require('../../middelwares');
 
 const router = express.Router();
 
+router.use(auth);
 router.route('/').get(ctrlWrapper(getAll)).post(validation(contactJoiSchema), ctrlWrapper(add));
 
 router

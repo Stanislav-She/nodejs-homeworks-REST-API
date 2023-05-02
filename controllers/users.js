@@ -3,8 +3,10 @@ const gravatar = require('gravatar');
 const path = require('path');
 const fs = require('fs').promises;
 const Jimp = require('jimp');
+const { v4 } = require('uuid');
 const { User } = require('../models');
 const { HttpError } = require('../utils');
+const { sendEmail } = require('../utils');
 
 const { JWT_SECRET, JWT_EXPIRES } = process.env;
 
@@ -17,14 +19,19 @@ const register = async (req, res) => {
     throw new HttpError(409, 'Email in use');
   }
   const avatarURL = gravatar.url(email, { s: '250', d: 'identicon' });
-  const newUser = new User({ email, subscription, avatarURL });
+  const verificationToken = v4();
+  const newUser = new User({ email, subscription, avatarURL, verificationToken });
+
   newUser.setPassword(password);
-  newUser.save();
+  await newUser.save();
+
+  await sendEmail(email, verificationToken);
   res.status(201).json({
     user: {
       email,
       subscription,
       avatarURL,
+      verificationToken,
     },
   });
 };
@@ -32,8 +39,8 @@ const register = async (req, res) => {
 const login = async (req, res) => {
   const { email, password } = req.body;
   const user = await User.findOne({ email });
-  if (!user || !user.comparePassword(password)) {
-    throw new HttpError(401, 'Email or password is wrong');
+  if (!user || !user.comparePassword(password) || !user.verify) {
+    throw new HttpError(401, 'Email is wrong or not verify, or password is wrong');
   }
   const payload = {
     id: user._id,
@@ -102,4 +109,40 @@ const updateAvatar = async (req, res) => {
   }
 };
 
-module.exports = { register, login, logout, getCurrent, updateSubscription, updateAvatar };
+const getVerifyEmail = async (req, res) => {
+  const { verificationToken } = req.params;
+  const user = await User.findOne({ verificationToken });
+  if (!user) throw new HttpError(404, 'User not found');
+  await User.findByIdAndUpdate(user._id, { verify: true, verificationToken: null });
+  res.status(200).json({ message: 'Verification successful' });
+};
+
+const resendVerifyEmail = async (req, res) => {
+  const { email } = req.body;
+  if (!email) {
+    throw new HttpError(400, 'missing required field email');
+  }
+  const user = await User.findOne({ email });
+  if (!user) {
+    throw HttpError(404, 'User not found');
+  }
+  if (user.verify) {
+    throw new HttpError(400, 'Verification has already been passed');
+  }
+
+  await sendEmail(email, user.verificationToken);
+  res.status(200).json({
+    message: 'Verification email sent',
+  });
+};
+
+module.exports = {
+  register,
+  login,
+  logout,
+  getCurrent,
+  updateSubscription,
+  updateAvatar,
+  getVerifyEmail,
+  resendVerifyEmail,
+};
